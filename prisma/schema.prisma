@@ -1,0 +1,673 @@
+// Planner — server schema.
+//
+// This file mirrors `planner-mobile/lib/core/database/tables.dart`. The two are
+// kept in step by hand; `npm run db:check-schema-drift` catches drift between
+// this file and the deployed database, and `test/schema-parity.spec.ts` catches
+// drift between this file and the Drift tables.
+//
+// Three rules apply to every syncable model and are what separate this schema
+// from the client's:
+//
+//   1. `userId` is denormalised onto every row. Authorization never traverses
+//      task → project → organization; it is always `WHERE user_id = <derived
+//      from the verified Firebase token>`.
+//   2. Deletes are soft (`deletedAt`). A hard delete cannot be replicated — the
+//      peer that never saw the row has no way to learn it is gone.
+//   3. `seq` is a per-user monotonic counter assigned by the server on every
+//      write. `GET /sync/pull?since=<seq>` is a range scan on `(user_id, seq)`.
+//
+// `relationMode = "prisma"` is deliberate: relations exist for typed queries but
+// no foreign-key constraints reach the database. Sync batches arrive in an
+// arbitrary order — a task can land before the project it points at — and a real
+// FK would reject the write. Referential rules are the application's job, which
+// is also what keeps client and server from diverging on cascade behaviour.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider     = "postgresql"
+  relationMode = "prisma"
+}
+
+// ─────────────────────────────────────────────────────────── identity & sync
+
+/// Server-side only. Firebase owns authentication; this table owns identity as
+/// the rest of the schema sees it. Every other table references `User.id`, never
+/// `firebaseUid`, so identity can be re-pointed at another provider without
+/// touching a single domain row.
+model User {
+  id          String    @id @default(uuid()) @db.Uuid
+  firebaseUid String    @unique @map("firebase_uid")
+  email       String?
+  displayName String?   @map("display_name")
+  photoUrl    String?   @map("photo_url")
+  lastSeenAt  DateTime? @map("last_seen_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  /// Set when the account is scheduled for erasure. The Firebase user is
+  /// deleted first; this row and its data follow. See UsersService.deleteAccount.
+  deletedAt   DateTime? @map("deleted_at")
+
+  syncState        SyncState?
+  syncClients      SyncClient[]
+  organizations    Organization[]
+  projects         Project[]
+  recurrenceRules  RecurrenceRule[]
+  tasks            Task[]
+  checklistItems   ChecklistItem[]
+  meetings         Meeting[]
+  meetingNoteItems MeetingNoteItem[]
+  requirements     Requirement[]
+  notes            Note[]
+  decisions        Decision[]
+  activityEntries  ActivityEntry[]
+  attachments      Attachment[]
+  voiceNotes       VoiceNote[]
+
+  @@index([deletedAt])
+  @@map("users")
+}
+
+/// The per-user sequence allocator. One row per user, bumped inside the same
+/// transaction as the write it stamps, so `seq` is gapless-enough and strictly
+/// increasing per user. A global sequence would leak one user's write volume
+/// into another user's cursor and force every pull to scan rows it cannot see.
+model SyncState {
+  userId    String   @id @map("user_id") @db.Uuid
+  lastSeq   BigInt   @default(0) @map("last_seq")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("sync_state")
+}
+
+/// One row per installed client. Not required by the protocol — the cursor lives
+/// on the device — but it is what makes "why is my phone behind?" answerable.
+model SyncClient {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  /// Client-generated, stable across launches. Also the tie-breaker when two
+  /// devices write the same row in the same millisecond.
+  deviceId      String    @map("device_id")
+  platform      String?
+  appVersion    String?   @map("app_version")
+  lastPulledSeq BigInt    @default(0) @map("last_pulled_seq")
+  lastPushedAt  DateTime? @map("last_pushed_at")
+  lastPulledAt  DateTime? @map("last_pulled_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, deviceId])
+  @@index([userId])
+  @@map("sync_clients")
+}
+
+// ──────────────────────────────────────────────────────────────────── enums
+// Values are the Dart `Enum.name` strings — Drift persists `textEnum` columns by
+// name, so these identifiers are a wire contract with the mobile app. Renaming
+// one is a data migration, not a refactor.
+
+enum OrgStatus {
+  active
+  paused
+  archived
+}
+
+enum ProjectStatus {
+  active
+  paused
+  completed
+  archived
+}
+
+enum TaskType {
+  projectWork
+  admin
+  followUp
+  investigation
+  personal
+}
+
+enum TaskStatus {
+  inbox
+  next
+  inProgress
+  waiting
+  done
+  dropped
+  someday
+}
+
+enum TaskPriority {
+  p1
+  p2
+  p3
+}
+
+/// How firm a deadline is. A `week` deadline is stored as the last day of its
+/// week and means "sometime that week": it is shown as "This week" rather than
+/// as a date, and only counts as overdue once the week has ended.
+enum DeadlinePrecision {
+  day
+  week
+}
+
+enum TaskContextTag {
+  quick
+  deepWork
+  call
+  review
+  computer
+  errand
+  meeting
+}
+
+enum RequirementType {
+  feature
+  requirement
+  idea
+  investigation
+  question
+}
+
+enum RequirementStatus {
+  unreviewed
+  accepted
+  planned
+  rejected
+  implemented
+}
+
+enum ActivitySource {
+  taskCompletion
+  manual
+  recurringTask
+  meeting
+  note
+}
+
+enum AttachmentKind {
+  screenshot
+  image
+  file
+}
+
+enum RecurrenceFrequency {
+  daily
+  weekly
+  monthly
+  yearly
+  selectedWeekdays
+  everyNWeeks
+  everyNMonths
+}
+
+enum ProcessedItemKind {
+  task
+  requirement
+  feature
+  idea
+  investigation
+  followUp
+  decision
+  question
+  note
+}
+
+// ─────────────────────────────────────────────────────────────────── domain
+
+model Organization {
+  id            String    @id @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  name          String    @db.VarChar(200)
+  description   String?
+  status        OrgStatus
+  favorite      Boolean   @default(false)
+  iconCodePoint Int?      @map("icon_code_point")
+  colorValue    Int?      @map("color_value")
+  sortOrder     Int       @default(0) @map("sort_order")
+  archivedAt    DateTime? @map("archived_at")
+  createdAt     DateTime  @map("created_at")
+  updatedAt     DateTime  @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+  seq           BigInt    @default(0)
+
+  user            User            @relation(fields: [userId], references: [id])
+  projects        Project[]
+  tasks           Task[]
+  meetings        Meeting[]
+  requirements    Requirement[]
+  notes           Note[]
+  decisions       Decision[]
+  activityEntries ActivityEntry[]
+  attachments     Attachment[]
+  voiceNotes      VoiceNote[]
+
+  @@index([userId, seq])
+  @@index([userId, status])
+  @@map("organizations")
+}
+
+model Project {
+  id             String        @id @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  organizationId String?       @map("organization_id") @db.Uuid
+  name           String        @db.VarChar(200)
+  description    String?
+  status         ProjectStatus
+  favorite       Boolean       @default(false)
+  iconCodePoint  Int?          @map("icon_code_point")
+  colorValue     Int?          @map("color_value")
+  sortOrder      Int           @default(0) @map("sort_order")
+  archivedAt     DateTime?     @map("archived_at")
+  createdAt      DateTime      @map("created_at")
+  updatedAt      DateTime      @map("updated_at")
+  deletedAt      DateTime?     @map("deleted_at")
+  seq            BigInt        @default(0)
+
+  user            User            @relation(fields: [userId], references: [id])
+  organization    Organization?   @relation(fields: [organizationId], references: [id])
+  tasks           Task[]
+  meetings        Meeting[]
+  requirements    Requirement[]
+  notes           Note[]
+  decisions       Decision[]
+  activityEntries ActivityEntry[]
+  attachments     Attachment[]
+  voiceNotes      VoiceNote[]
+
+  @@index([userId, seq])
+  @@index([userId, organizationId])
+  @@index([userId, status])
+  @@map("projects")
+}
+
+/// A practical subset of calendar recurrence, not a full RRULE. Kept identical
+/// to the client's `RecurrenceSpec` because both sides evaluate it — the client
+/// to preview the next occurrence, the server to materialise it.
+model RecurrenceRule {
+  id                  String              @id @db.Uuid
+  userId              String              @map("user_id") @db.Uuid
+  frequency           RecurrenceFrequency
+  /// The `N` in "every N weeks" / "every N months"; the step for the simple
+  /// frequencies. Values below 1 are treated as 1.
+  interval            Int                 @default(1)
+  /// Bitmask of selected weekdays, Monday = 1 << 0 … Sunday = 1 << 6.
+  weekdaysMask        Int?                @map("weekdays_mask")
+  /// Day of month for monthly/yearly rules (1–31, clamped to month length).
+  dayOfMonth          Int?                @map("day_of_month")
+  /// Month (1–12) for yearly rules.
+  monthOfYear         Int?                @map("month_of_year")
+  /// How many days before the due date a reminder should fire.
+  reminderDaysBefore  Int?                @map("reminder_days_before")
+  /// Minutes from midnight for the reminder time of day.
+  reminderMinuteOfDay Int?                @map("reminder_minute_of_day")
+  endDate             DateTime?           @map("end_date")
+  createdAt           DateTime            @map("created_at")
+  updatedAt           DateTime            @map("updated_at")
+  deletedAt           DateTime?           @map("deleted_at")
+  seq                 BigInt              @default(0)
+
+  user  User   @relation(fields: [userId], references: [id])
+  tasks Task[]
+
+  @@index([userId, seq])
+  @@map("recurrence_rules")
+}
+
+model Task {
+  id                  String            @id @db.Uuid
+  userId              String            @map("user_id") @db.Uuid
+  organizationId      String?           @map("organization_id") @db.Uuid
+  projectId           String?           @map("project_id") @db.Uuid
+  sourceMeetingId     String?           @map("source_meeting_id") @db.Uuid
+  sourceRequirementId String?           @map("source_requirement_id") @db.Uuid
+  /// One level of subtasks only — enforced by TasksService, not the schema.
+  parentTaskId        String?           @map("parent_task_id") @db.Uuid
+  recurrenceRuleId    String?           @map("recurrence_rule_id") @db.Uuid
+  /// Groups every historical occurrence of one recurring obligation. A recurring
+  /// task never reuses a row: each occurrence is its own task sharing this id.
+  recurringSeriesId   String?           @map("recurring_series_id") @db.Uuid
+  title               String            @db.VarChar(500)
+  description         String?
+  type                TaskType
+  status              TaskStatus
+  priority            TaskPriority
+  context             TaskContextTag?
+  /// Free-text person or dependency a Waiting item is blocked on.
+  waitingOn           String?           @map("waiting_on")
+  deadline            DateTime?
+  deadlinePrecision   DeadlinePrecision @default(day) @map("deadline_precision")
+  reminderAt          DateTime?         @map("reminder_at")
+  followUpDate        DateTime?         @map("follow_up_date")
+  completedAt         DateTime?         @map("completed_at")
+  droppedAt           DateTime?         @map("dropped_at")
+  /// Set when a weekly review defers the task; drives "carried forward".
+  carriedForwardAt    DateTime?         @map("carried_forward_at")
+  carryForwardCount   Int               @default(0) @map("carry_forward_count")
+  sortOrder           Int               @default(0) @map("sort_order")
+  createdAt           DateTime          @map("created_at")
+  updatedAt           DateTime          @map("updated_at")
+  deletedAt           DateTime?         @map("deleted_at")
+  seq                 BigInt            @default(0)
+
+  user            User            @relation(fields: [userId], references: [id])
+  organization    Organization?   @relation(fields: [organizationId], references: [id])
+  project         Project?        @relation(fields: [projectId], references: [id])
+  sourceMeeting   Meeting?        @relation(fields: [sourceMeetingId], references: [id])
+  recurrenceRule  RecurrenceRule? @relation(fields: [recurrenceRuleId], references: [id])
+  checklistItems  ChecklistItem[]
+  notes           Note[]
+  activityEntries ActivityEntry[]
+  attachments     Attachment[]
+  voiceNotes      VoiceNote[]
+
+  @@index([userId, seq])
+  @@index([userId, status])
+  @@index([userId, organizationId])
+  @@index([userId, projectId])
+  @@index([userId, deadline])
+  @@index([userId, recurringSeriesId])
+  @@index([userId, parentTaskId])
+  @@index([userId, completedAt])
+  @@index([sourceMeetingId])
+  @@index([sourceRequirementId])
+  @@index([recurrenceRuleId])
+  @@map("tasks")
+}
+
+model ChecklistItem {
+  id        String    @id @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  taskId    String    @map("task_id") @db.Uuid
+  /// `text` on the client; `label` in Dart. The column name is the contract.
+  label     String    @map("text")
+  done      Boolean   @default(false)
+  position  Int       @default(0)
+  createdAt DateTime  @map("created_at")
+  updatedAt DateTime  @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  seq       BigInt    @default(0)
+
+  user User @relation(fields: [userId], references: [id])
+  task Task @relation(fields: [taskId], references: [id])
+
+  @@index([userId, seq])
+  @@index([userId, taskId])
+  @@map("checklist_items")
+}
+
+model Meeting {
+  id             String    @id @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  projectId      String?   @map("project_id") @db.Uuid
+  title          String    @db.VarChar(300)
+  date           DateTime
+  attendees      String?
+  /// The untouched capture. Processing never edits this field.
+  rawNotes       String    @default("") @map("raw_notes")
+  createdAt      DateTime  @map("created_at")
+  updatedAt      DateTime  @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+  seq            BigInt    @default(0)
+
+  user            User              @relation(fields: [userId], references: [id])
+  organization    Organization?     @relation(fields: [organizationId], references: [id])
+  project         Project?          @relation(fields: [projectId], references: [id])
+  noteItems       MeetingNoteItem[]
+  sourcedTasks    Task[]
+  notes           Note[]
+  decisions       Decision[]
+  activityEntries ActivityEntry[]
+  attachments     Attachment[]
+  voiceNotes      VoiceNote[]
+
+  @@index([userId, seq])
+  @@index([userId, organizationId])
+  @@index([userId, projectId])
+  @@index([userId, date])
+  @@map("meetings")
+}
+
+/// One line of a meeting's raw notes, tracked so the app can report
+/// "6 notes captured, 4 processed, 2 still need review".
+///
+/// These rows are *derived* from `Meeting.rawNotes`; the raw text stays the
+/// source of truth and is never rewritten by processing.
+model MeetingNoteItem {
+  id          String             @id @db.Uuid
+  userId      String             @map("user_id") @db.Uuid
+  meetingId   String             @map("meeting_id") @db.Uuid
+  content     String             @map("text")
+  position    Int                @default(0)
+  processed   Boolean            @default(false)
+  resultKind  ProcessedItemKind? @map("result_kind")
+  resultId    String?            @map("result_id") @db.Uuid
+  processedAt DateTime?          @map("processed_at")
+  createdAt   DateTime           @map("created_at")
+  updatedAt   DateTime           @map("updated_at")
+  deletedAt   DateTime?          @map("deleted_at")
+  seq         BigInt             @default(0)
+
+  user    User    @relation(fields: [userId], references: [id])
+  meeting Meeting @relation(fields: [meetingId], references: [id])
+
+  @@index([userId, seq])
+  @@index([userId, meetingId])
+  @@map("meeting_note_items")
+}
+
+model Requirement {
+  id               String            @id @db.Uuid
+  userId           String            @map("user_id") @db.Uuid
+  organizationId   String?           @map("organization_id") @db.Uuid
+  projectId        String?           @map("project_id") @db.Uuid
+  sourceMeetingId  String?           @map("source_meeting_id") @db.Uuid
+  sourceNoteItemId String?           @map("source_note_item_id") @db.Uuid
+  title            String            @db.VarChar(500)
+  description      String?
+  type             RequirementType
+  status           RequirementStatus
+  createdAt        DateTime          @map("created_at")
+  updatedAt        DateTime          @map("updated_at")
+  deletedAt        DateTime?         @map("deleted_at")
+  seq              BigInt            @default(0)
+
+  user         User          @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  project      Project?      @relation(fields: [projectId], references: [id])
+  notes        Note[]
+  attachments  Attachment[]
+
+  @@index([userId, seq])
+  @@index([userId, projectId])
+  @@index([userId, organizationId])
+  @@index([userId, sourceMeetingId])
+  @@map("requirements")
+}
+
+model Note {
+  id             String    @id @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  projectId      String?   @map("project_id") @db.Uuid
+  taskId         String?   @map("task_id") @db.Uuid
+  meetingId      String?   @map("meeting_id") @db.Uuid
+  requirementId  String?   @map("requirement_id") @db.Uuid
+  title          String?
+  body           String
+  archivedAt     DateTime? @map("archived_at")
+  createdAt      DateTime  @map("created_at")
+  updatedAt      DateTime  @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+  seq            BigInt    @default(0)
+
+  user         User          @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  project      Project?      @relation(fields: [projectId], references: [id])
+  task         Task?         @relation(fields: [taskId], references: [id])
+  meeting      Meeting?      @relation(fields: [meetingId], references: [id])
+  requirement  Requirement?  @relation(fields: [requirementId], references: [id])
+  attachments  Attachment[]
+  voiceNotes   VoiceNote[]
+
+  @@index([userId, seq])
+  @@index([userId, organizationId])
+  @@index([userId, projectId])
+  @@index([userId, taskId])
+  @@index([userId, meetingId])
+  @@index([requirementId])
+  @@map("notes")
+}
+
+model Decision {
+  id              String    @id @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  organizationId  String?   @map("organization_id") @db.Uuid
+  projectId       String?   @map("project_id") @db.Uuid
+  sourceMeetingId String?   @map("source_meeting_id") @db.Uuid
+  decision        String
+  reason          String?
+  date            DateTime
+  createdAt       DateTime  @map("created_at")
+  updatedAt       DateTime  @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+  seq             BigInt    @default(0)
+
+  user          User          @relation(fields: [userId], references: [id])
+  organization  Organization? @relation(fields: [organizationId], references: [id])
+  project       Project?      @relation(fields: [projectId], references: [id])
+  sourceMeeting Meeting?      @relation(fields: [sourceMeetingId], references: [id])
+
+  @@index([userId, seq])
+  @@index([userId, organizationId])
+  @@index([userId, projectId])
+  @@index([sourceMeetingId])
+  @@map("decisions")
+}
+
+/// The historical record of what actually happened. Activity rows outlive the
+/// tasks they came from: deleting a task clears the link instead of cascading.
+/// On the client that was `ON DELETE SET NULL`; here it is an application rule
+/// in TasksService, so the two sides cannot silently diverge.
+model ActivityEntry {
+  id             String         @id @db.Uuid
+  userId         String         @map("user_id") @db.Uuid
+  organizationId String?        @map("organization_id") @db.Uuid
+  projectId      String?        @map("project_id") @db.Uuid
+  taskId         String?        @map("task_id") @db.Uuid
+  meetingId      String?        @map("meeting_id") @db.Uuid
+  description    String         @map("text")
+  source         ActivitySource
+  occurredAt     DateTime       @map("occurred_at")
+  createdAt      DateTime       @map("created_at")
+  updatedAt      DateTime       @map("updated_at")
+  deletedAt      DateTime?      @map("deleted_at")
+  seq            BigInt         @default(0)
+
+  user         User          @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  project      Project?      @relation(fields: [projectId], references: [id])
+  task         Task?         @relation(fields: [taskId], references: [id])
+  meeting      Meeting?      @relation(fields: [meetingId], references: [id])
+
+  @@index([userId, seq])
+  @@index([userId, occurredAt])
+  @@index([userId, organizationId])
+  @@index([userId, projectId])
+  @@index([taskId])
+  @@index([meetingId])
+  @@map("activity_entries")
+}
+
+/// Metadata only. Bytes live in R2, never in Postgres.
+///
+/// `relativePath` is the client's path under its documents directory and stays
+/// authoritative for the device that captured the file. `objectKey` is the R2
+/// key once uploaded. A row with `objectKey = null` exists only on the device
+/// that made it; a row with `relativePath = ''` was created on the web.
+model Attachment {
+  id             String         @id @db.Uuid
+  userId         String         @map("user_id") @db.Uuid
+  organizationId String?        @map("organization_id") @db.Uuid
+  projectId      String?        @map("project_id") @db.Uuid
+  taskId         String?        @map("task_id") @db.Uuid
+  meetingId      String?        @map("meeting_id") @db.Uuid
+  noteId         String?        @map("note_id") @db.Uuid
+  requirementId  String?        @map("requirement_id") @db.Uuid
+  kind           AttachmentKind
+  relativePath   String         @default("") @map("relative_path")
+  objectKey      String?        @map("object_key")
+  uploadedAt     DateTime?      @map("uploaded_at")
+  fileName       String         @map("file_name")
+  mimeType       String?        @map("mime_type")
+  sizeBytes      Int?           @map("size_bytes")
+  caption        String?
+  /// Reserved for a future OCR pass. Out of scope — the column exists so the
+  /// client and server schemas stay identical, and is never populated.
+  ocrText        String?        @map("ocr_text")
+  archivedAt     DateTime?      @map("archived_at")
+  createdAt      DateTime       @map("created_at")
+  updatedAt      DateTime       @map("updated_at")
+  deletedAt      DateTime?      @map("deleted_at")
+  seq            BigInt         @default(0)
+
+  user         User          @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  project      Project?      @relation(fields: [projectId], references: [id])
+  task         Task?         @relation(fields: [taskId], references: [id])
+  meeting      Meeting?      @relation(fields: [meetingId], references: [id])
+  note         Note?         @relation(fields: [noteId], references: [id])
+  requirement  Requirement?  @relation(fields: [requirementId], references: [id])
+
+  @@index([userId, seq])
+  @@index([userId, taskId])
+  @@index([userId, meetingId])
+  @@index([userId, projectId])
+  @@index([noteId])
+  @@index([requirementId])
+  @@map("attachments")
+}
+
+model VoiceNote {
+  id             String    @id @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  projectId      String?   @map("project_id") @db.Uuid
+  taskId         String?   @map("task_id") @db.Uuid
+  meetingId      String?   @map("meeting_id") @db.Uuid
+  noteId         String?   @map("note_id") @db.Uuid
+  title          String?
+  relativePath   String    @default("") @map("relative_path")
+  objectKey      String?   @map("object_key")
+  uploadedAt     DateTime? @map("uploaded_at")
+  durationMs     Int       @default(0) @map("duration_ms")
+  /// Filled in by a transcription pass when one exists. Deferred until after
+  /// the server migration — Whisper needs ~1.5 GB and a dedicated core.
+  transcript     String?
+  archivedAt     DateTime? @map("archived_at")
+  createdAt      DateTime  @map("created_at")
+  updatedAt      DateTime  @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+  seq            BigInt    @default(0)
+
+  user         User          @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  project      Project?      @relation(fields: [projectId], references: [id])
+  task         Task?         @relation(fields: [taskId], references: [id])
+  meeting      Meeting?      @relation(fields: [meetingId], references: [id])
+  note         Note?         @relation(fields: [noteId], references: [id])
+
+  @@index([userId, seq])
+  @@index([userId, taskId])
+  @@index([userId, meetingId])
+  @@index([userId, projectId])
+  @@index([noteId])
+  @@map("voice_notes")
+}

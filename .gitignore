@@ -1,0 +1,25 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+.deploy.env
+
+# Firebase service account — never commit
+firebase-service-account.json
+*-service-account.json
+
+# Local packaging output
+release/
+*.tgz
+
+# Deploy tooling
+deploy/
+deploy.sh
+scripts/
+
+.DS_Store

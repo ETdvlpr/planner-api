@@ -1,0 +1,260 @@
+[
+  {
+    "deviceId": "2d67fbc0-a648-45d3-ba3c-8dd14020b560",
+    "platform": "ios",
+    "appVersion": "1.1.0",
+    "changes": [
+      {
+        "table": "organizations",
+        "id": "1ae290cb-2673-45c8-8f8e-5601496fdd9d",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "name": "Acme",
+          "description": "A client",
+          "status": "active",
+          "favorite": false,
+          "iconCodePoint": null,
+          "colorValue": null,
+          "sortOrder": 0,
+          "archivedAt": null
+        }
+      },
+      {
+        "table": "projects",
+        "id": "7185212d-fcfb-45fe-a376-96c257f00759",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "organizationId": "1ae290cb-2673-45c8-8f8e-5601496fdd9d",
+          "name": "Website",
+          "description": null,
+          "status": "active",
+          "favorite": false,
+          "iconCodePoint": null,
+          "colorValue": null,
+          "sortOrder": 0,
+          "archivedAt": null
+        }
+      },
+      {
+        "table": "recurrence_rules",
+        "id": "e153ff34-db2e-47b3-ad5d-af35425a9c91",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "frequency": "monthly",
+          "interval": 1,
+          "weekdaysMask": null,
+          "dayOfMonth": 7,
+          "monthOfYear": null,
+          "reminderDaysBefore": 3,
+          "reminderMinuteOfDay": null,
+          "endDate": null
+        }
+      },
+      {
+        "table": "meetings",
+        "id": "1baa7b67-f159-4700-b6af-4240e472ebd0",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "organizationId": null,
+          "projectId": "7185212d-fcfb-45fe-a376-96c257f00759",
+          "title": "Kick-off",
+          "date": "2026-09-14T06:50:46.000Z",
+          "attendees": "Sam, the vendor team",
+          "rawNotes": "- decide pricing\n- send contract"
+        }
+      },
+      {
+        "table": "requirements",
+        "id": "b4458166-f4ba-4527-a694-2c887471565e",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "organizationId": null,
+          "projectId": "7185212d-fcfb-45fe-a376-96c257f00759",
+          "sourceMeetingId": "1baa7b67-f159-4700-b6af-4240e472ebd0",
+          "sourceNoteItemId": "7adfed17-6e0b-43b2-aab6-6f40609043be",
+          "title": "decide pricing",
+          "description": null,
+          "type": "requirement",
+          "status": "unreviewed"
+        }
+      },
+      {
+        "table": "tasks",
+        "id": "f02a57cf-f745-4ed4-bd55-8068a0b6cbc7",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "organizationId": "1ae290cb-2673-45c8-8f8e-5601496fdd9d",
+          "projectId": null,
+          "sourceMeetingId": null,
+          "sourceRequirementId": null,
+          "parentTaskId": null,
+          "recurrenceRuleId": "e153ff34-db2e-47b3-ad5d-af35425a9c91",
+          "recurringSeriesId": "dbf2dc03-be6d-4a02-a35f-0ec58b214356",
+          "title": "File the quarterly return",
+          "description": null,
+          "type": "admin",
+          "status": "next",
+          "priority": "p1",
+          "context": "computer",
+          "waitingOn": null,
+          "deadline": "2026-10-06T21:00:00.000Z",
+          "deadlinePrecision": "day",
+          "reminderAt": "2026-10-04T06:00:00.000Z",
+          "followUpDate": null,
+          "completedAt": null,
+          "droppedAt": null,
+          "carriedForwardAt": null,
+          "carryForwardCount": 0,
+          "sortOrder": 0
+        }
+      },
+      {
+        "table": "checklist_items",
+        "id": "5f9ea8d9-a004-428f-b14a-99e3b5012929",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "taskId": "f02a57cf-f745-4ed4-bd55-8068a0b6cbc7",
+          "label": "Collect invoices",
+          "done": false,
+          "position": 0
+        }
+      },
+      {
+        "table": "meeting_note_items",
+        "id": "540f160a-d880-4d7a-930f-cfcdf6b0131b",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "meetingId": "1baa7b67-f159-4700-b6af-4240e472ebd0",
+          "content": "send contract",
+          "position": 1,
+          "processed": false,
+          "resultKind": null,
+          "resultId": null,
+          "processedAt": null
+        }
+      },
+      {
+        "table": "meeting_note_items",
+        "id": "7adfed17-6e0b-43b2-aab6-6f40609043be",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "meetingId": "1baa7b67-f159-4700-b6af-4240e472ebd0",
+          "content": "decide pricing",
+          "position": 0,
+          "processed": true,
+          "resultKind": "requirement",
+          "resultId": "b4458166-f4ba-4527-a694-2c887471565e",
+          "processedAt": "2026-09-14T06:50:46.000Z"
+        }
+      },
+      {
+        "table": "notes",
+        "id": "c1ddab7a-2407-4958-a582-af3118bee5d4",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "organizationId": null,
+          "projectId": "7185212d-fcfb-45fe-a376-96c257f00759",
+          "taskId": null,
+          "meetingId": null,
+          "requirementId": null,
+          "title": null,
+          "body": "Remember the login",
+          "archivedAt": null
+        }
+      },
+      {
+        "table": "decisions",
+        "id": "dd70b776-6e7b-4170-9fec-2c9b32979df5",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "organizationId": null,
+          "projectId": "7185212d-fcfb-45fe-a376-96c257f00759",
+          "sourceMeetingId": "1baa7b67-f159-4700-b6af-4240e472ebd0",
+          "decision": "Use the existing supplier",
+          "reason": "Switching costs more than it saves",
+          "date": "2026-09-14T06:50:46.000Z"
+        }
+      },
+      {
+        "table": "activity_entries",
+        "id": "2bc27194-147c-4c69-aa97-a4914b39c449",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "organizationId": null,
+          "projectId": "7185212d-fcfb-45fe-a376-96c257f00759",
+          "taskId": null,
+          "meetingId": null,
+          "description": "Reviewed the contract",
+          "source": "manual",
+          "occurredAt": "2026-09-14T06:50:46.000Z"
+        }
+      },
+      {
+        "table": "attachments",
+        "id": "838c7bee-1169-40e3-b033-e9c4f2b3982a",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "organizationId": "1ae290cb-2673-45c8-8f8e-5601496fdd9d",
+          "projectId": "7185212d-fcfb-45fe-a376-96c257f00759",
+          "taskId": "f02a57cf-f745-4ed4-bd55-8068a0b6cbc7",
+          "meetingId": null,
+          "noteId": null,
+          "requirementId": null,
+          "kind": "image",
+          "relativePath": "media/images/6bc19d45-cc8a-40be-80eb-230fccc32257.png",
+          "fileName": "shot.png",
+          "mimeType": "image/png",
+          "sizeBytes": 4,
+          "caption": "Whiteboard",
+          "ocrText": null,
+          "archivedAt": null
+        }
+      },
+      {
+        "table": "voice_notes",
+        "id": "432fd7de-adc0-40f9-aeec-828087408343",
+        "op": "upsert",
+        "updatedAt": "2026-09-14T06:50:46.000Z",
+        "data": {
+          "createdAt": "2026-09-14T06:50:46.000Z",
+          "organizationId": null,
+          "projectId": null,
+          "taskId": null,
+          "meetingId": "1baa7b67-f159-4700-b6af-4240e472ebd0",
+          "noteId": null,
+          "title": "Kick-off recording",
+          "relativePath": "media/audio/sample.m4a",
+          "durationMs": 12000,
+          "transcript": null,
+          "archivedAt": null
+        }
+      }
+    ]
+  }
+]
