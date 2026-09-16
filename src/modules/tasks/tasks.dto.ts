@@ -7,7 +7,7 @@ import {
   TaskStatus,
   TaskType,
 } from '@prisma/client';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
@@ -207,6 +207,11 @@ export class UpdateTaskDto extends PartialType(CreateTaskDto) {}
 export class TaskQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ enum: TaskStatus, isArray: true })
   @IsOptional()
+  // A single `?status=next` arrives as a string, not an array, and would
+  // otherwise fail the `each` check. Coerce so one value works like many.
+  @Transform(({ value }: { value: unknown }) =>
+    value === undefined || Array.isArray(value) ? value : [value],
+  )
   @IsEnum(TaskStatus, { each: true })
   status?: TaskStatus[];
 
