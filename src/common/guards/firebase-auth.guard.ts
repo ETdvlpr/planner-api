@@ -9,6 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { FirebaseAdminService } from '../../modules/auth/firebase-admin.service';
+import { isAnonymous } from '../../modules/auth/claims';
 import { UsersService } from '../../modules/users/users.service';
 
 /**
@@ -57,6 +58,7 @@ export class FirebaseAuthGuard implements CanActivate {
       email: claims.email,
       name: typeof claims.name === 'string' ? claims.name : undefined,
       picture: claims.picture,
+      anonymous: isAnonymous(claims),
     });
 
     return true;

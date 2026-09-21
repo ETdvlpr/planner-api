@@ -83,6 +83,14 @@ export const appConfig = () => ({
     ),
   },
 
+  guests: {
+    // Guests can upload — pasting a screenshot is the point of the web app —
+    // but a browser session nobody signed in to should not fill a bucket.
+    maxAttachments: parseInt(process.env.GUEST_MAX_ATTACHMENTS ?? '20', 10),
+    // Days a guest may go unseen before `jobs/sweep-anonymous` erases it.
+    sweepAfterDays: parseInt(process.env.GUEST_SWEEP_AFTER_DAYS ?? '30', 10),
+  },
+
   sync: {
     maxPushChanges: parseInt(process.env.SYNC_MAX_PUSH_CHANGES ?? '500', 10),
     maxPullRows: parseInt(process.env.SYNC_MAX_PULL_ROWS ?? '500', 10),

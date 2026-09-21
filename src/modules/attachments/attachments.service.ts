@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Attachment } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { SeqService } from '../../common/crud/seq.service';
@@ -28,6 +33,7 @@ export class AttachmentsService extends ScopedCrudService<Attachment> {
     prisma: PrismaService,
     seq: SeqService,
     private readonly storage: StorageService,
+    private readonly config: ConfigService,
   ) {
     super(prisma, seq);
   }
@@ -47,8 +53,13 @@ export class AttachmentsService extends ScopedCrudService<Attachment> {
     return this.list(userId, query, where);
   }
 
-  async createWithUpload(userId: string, dto: CreateAttachmentDto) {
+  async createWithUpload(
+    userId: string,
+    dto: CreateAttachmentDto,
+    { isAnonymous = false }: { isAnonymous?: boolean } = {},
+  ) {
     await this.assertLinks(userId, dto);
+    if (isAnonymous) await this.assertGuestQuota(userId);
 
     const upload = await this.storage.presignUpload(
       userId,
@@ -76,6 +87,24 @@ export class AttachmentsService extends ScopedCrudService<Attachment> {
     });
 
     return { attachment, upload };
+  }
+
+  /**
+   * A guest gets a fixed number of attachments, then has to sign in. The cap
+   * is on rows, not bytes: the per-file limit is already signed into the
+   * upload URL, so rows × that limit bounds what one browser session can put
+   * in the bucket.
+   */
+  private async assertGuestQuota(userId: string): Promise<void> {
+    const max = this.config.get<number>('guests.maxAttachments') ?? 0;
+    const held = await this.prisma.attachment.count({
+      where: { userId, deletedAt: null },
+    });
+    if (held >= max) {
+      throw new ForbiddenException(
+        `Guests can keep up to ${max} attachments. Sign in to add more.`,
+      );
+    }
   }
 
   /**

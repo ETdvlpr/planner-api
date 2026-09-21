@@ -12,6 +12,12 @@ export interface AuthenticatedUser {
   id: string;
   firebaseUid: string;
   email: string | null;
+  /**
+   * A guest — the token's `sign_in_provider` is `anonymous`. Read from the
+   * claims on every request, never from the cache, so linking the account to a
+   * real sign-in lifts guest limits on the very next call.
+   */
+  isAnonymous: boolean;
 }
 
 export const REQUEST_USER_KEY = 'plannerUser';

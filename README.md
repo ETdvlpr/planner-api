@@ -92,6 +92,19 @@ replays it. After changing the Drift schema, regenerate it from
 `planner-mobile` with `WIRE_FIXTURE_OUT=../planner-api/test/fixtures/client-push.json
 flutter test test/unit/wire_fixture_test.dart`.
 
+**Guests are real principals.** The web app's "continue without an account"
+is a Firebase *anonymous* user: a real uid and token, so the guard, `user_id`
+scoping and sequencing all apply unchanged. `AuthenticatedUser.isAnonymous`
+(from the token's `sign_in_provider`, never from a cache) is what guest limits
+key on — today only the attachment cap in `AttachmentsService`. Upgrading is
+Firebase's `linkWith…`, which keeps the uid, so nothing moves; only when the
+credential already belongs to an account does the client call
+`POST /users/adopt`, and that path re-stamps every adopted row's `seq` under
+the target so the target's phone pulls it. `jobs/sweep-anonymous.ts` erases
+guests unseen for `GUEST_SWEEP_AFTER_DAYS`; enable it once with
+`systemctl enable --now planner-guest-sweep.timer`. Anonymous sign-in must
+be switched on in the Firebase console (Authentication → Sign-in method).
+
 **Recurrence exists twice.** The maths is implemented in Dart and again in
 `recurrence.spec-model.ts`. They must agree; `recurrence.spec.ts` pins the
 cases. If you change one, change both.

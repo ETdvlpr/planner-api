@@ -44,6 +44,11 @@ model User {
   displayName String?   @map("display_name")
   photoUrl    String?   @map("photo_url")
   lastSeenAt  DateTime? @map("last_seen_at")
+  /// True while the Firebase user is an anonymous one (web "continue as
+  /// guest"). Cleared on the first request after the account is linked to a
+  /// real sign-in — same uid, same row, so the data never moves. Anonymous
+  /// accounts that go quiet are erased by `jobs/sweep-anonymous`.
+  anonymous   Boolean   @default(false)
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   /// Set when the account is scheduled for erasure. The Firebase user is
@@ -67,6 +72,7 @@ model User {
   voiceNotes       VoiceNote[]
 
   @@index([deletedAt])
+  @@index([anonymous, lastSeenAt])
   @@map("users")
 }
 

@@ -12,7 +12,11 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UserId } from '../../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  UserId,
+  type AuthenticatedUser,
+} from '../../common/decorators/current-user.decorator';
 import {
   AttachmentQueryDto,
   ConfirmUploadDto,
@@ -42,8 +46,13 @@ export class AttachmentsController {
       '`upload.uploadUrl` with the headers given, then call ' +
       '`POST /attachments/:id/confirm`.',
   })
-  create(@UserId() userId: string, @Body() dto: CreateAttachmentDto) {
-    return this.attachments.createWithUpload(userId, dto);
+  create(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateAttachmentDto,
+  ) {
+    return this.attachments.createWithUpload(user.id, dto, {
+      isAnonymous: user.isAnonymous,
+    });
   }
 
   @Post(':id/upload-url')
