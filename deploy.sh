@@ -112,7 +112,7 @@ rm -rf "$TMP_PRISMA"
 echo "── Smoke-testing the new build ─────────────────────────────────────"
 # Boots the release against the production database on a throwaway port and
 # checks health + auth before it is allowed to replace `current`.
-SMOKE_DATABASE_URL="$DB_URL" "$RELEASE/scripts/smoke-dist.sh" "$RELEASE/node_modules"
+(cd "$RELEASE" && SMOKE_DATABASE_URL="$DB_URL" ./scripts/smoke-dist.sh node_modules)
 
 chown -R planner:planner "$RELEASE"
 
