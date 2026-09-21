@@ -1,0 +1,51 @@
+[Unit]
+Description=Planner API
+After=network.target postgresql.service
+Wants=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/planner-api
+EnvironmentFile=/var/www/planner-api/.env
+ExecStart=/usr/bin/node dist/main.js
+Restart=always
+RestartSec=5
+User=planner
+Group=planner
+Environment=NODE_ENV=production
+
+# ── Resource limits ────────────────────────────────────────────────────────
+# None of the six services already on this box set any. Planner is the seventh,
+# and it is the one sharing a machine with three products that have paying
+# customers — so it is the one that must not be able to take them down.
+#
+# MemoryMax is a hard cap: the cgroup OOM-kills this service rather than letting
+# the kernel pick a victim across the whole machine. MemoryHigh throttles first,
+# so a slow leak shows up as degraded latency here instead of a sudden kill.
+#
+# Measured: 224 MB RSS idle in production mode with Swagger off. The headroom
+# above that is for request handling and the Prisma pool, not for growth — if
+# RSS sits near MemoryHigh in steady state, that is the signal to move off this
+# box, not to raise the number. `/health` reports rssMb so this is checkable
+# without SSH.
+MemoryHigh=300M
+MemoryMax=384M
+CPUQuota=60%
+TasksMax=128
+
+# Node's heap must be capped below MemoryMax or V8 will happily grow into the
+# cgroup limit and be killed mid-request instead of running a GC.
+Environment=NODE_OPTIONS=--max-old-space-size=256
+
+# ── Hardening ──────────────────────────────────────────────────────────────
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/planner-api
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

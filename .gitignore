@@ -17,9 +17,5 @@ firebase-service-account.json
 release/
 *.tgz
 
-# Deploy tooling
-deploy/
-deploy.sh
-scripts/
 
 .DS_Store

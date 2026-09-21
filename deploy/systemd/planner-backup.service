@@ -1,0 +1,13 @@
+[Unit]
+Description=Planner — nightly database dump to R2
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/planner-backup.sh
+User=root
+Group=root
+EnvironmentFile=/var/www/planner-api/.env
+
+MemoryMax=256M
+CPUQuota=50%

@@ -1,0 +1,15 @@
+[Unit]
+Description=Erase abandoned Planner guest accounts daily
+# Same pattern as hi-selam-geoip-update.timer, for the same reason: a oneshot
+# under a timer costs nothing between runs, where an in-process scheduler costs
+# resident memory every minute of the day.
+
+[Timer]
+OnCalendar=*-*-* 03:50:00
+# The box already runs certbot and several backup jobs overnight; a spread
+# keeps them from landing on the single vCPU together.
+RandomizedDelaySec=900
+Persistent=true
+
+[Install]
+WantedBy=timers.target

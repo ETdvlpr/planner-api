@@ -1,0 +1,13 @@
+[Unit]
+Description=Nightly Planner database backup
+# There are no automated database backups on this server at all — not for
+# Postgres, not for MariaDB, across three production products. Planner must not
+# become the fourth in that position, so this ships with the first deploy.
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=600
+Persistent=true
+
+[Install]
+WantedBy=timers.target

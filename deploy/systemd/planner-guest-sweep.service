@@ -1,0 +1,22 @@
+[Unit]
+Description=Planner — erase abandoned guest accounts
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/www/planner-api
+EnvironmentFile=/var/www/planner-api/.env
+ExecStart=/usr/bin/node dist/jobs/sweep-anonymous.js
+User=planner
+Group=planner
+Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=192
+
+MemoryMax=256M
+CPUQuota=40%
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/planner-api
